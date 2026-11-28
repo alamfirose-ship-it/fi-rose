@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Render a 1080x1920 informative reel (Mayajaal-style layout).
+Scenes may be still images (.png/.jpg, slow pan) or real video clips (.mp4/.mov, looped + centre-cropped, no audio).
 Layout: black frame; top band = white rounded hook box (title + optional emoji, whole video);
 middle band = slow-panning image; lower band = word-synced Bengali subtitles; small "Fi-rose" brand.
 Usage: render.py spec.json
@@ -128,8 +129,15 @@ def main():
         vf = (f"[0:v]scale=-2:{int(MID_H * 1.12)}:flags=lanczos,crop={W}:{MID_H}:x='{x}':y='(ih-{MID_H})/2',"
               f"eq=contrast=1.06:saturation=0.92,vignette=PI/6,format=yuva420p[img];"
               f"color=c=black:s={W}x{H}:r={FPS}:d={d:.3f}[base];[base][img]overlay=0:{TOP}:shortest=1[bg]")
-        inputs = ["-framerate", str(FPS), "-loop", "1", "-t", f"{d:.3f}", "-i", ip,
-                  "-i", f"{tmp}/title.png", "-i", f"{tmp}/brand.png"]
+        if ip.lower().endswith((".mp4", ".mov", ".webm")):
+            # real video clip: loop if shorter than the scene, centre-crop into the middle band
+            vf = (f"[0:v]fps={FPS},scale=-2:{MID_H}:flags=lanczos,crop={W}:{MID_H},setpts=PTS-STARTPTS,"
+                  f"eq=contrast=1.04:saturation=0.95,vignette=PI/6,format=yuva420p[img];"
+                  f"color=c=black:s={W}x{H}:r={FPS}:d={d:.3f}[base];[base][img]overlay=0:{TOP}:shortest=1[bg]")
+            src = ["-stream_loop", "-1", "-t", f"{d:.3f}", "-i", ip]
+        else:
+            src = ["-framerate", str(FPS), "-loop", "1", "-t", f"{d:.3f}", "-i", ip]
+        inputs = [*src, "-i", f"{tmp}/title.png", "-i", f"{tmp}/brand.png"]
         chain = vf + f";[bg][1:v]overlay=(W-w)/2:{title_y}[v1];[v1][2:v]overlay=(W-w)/2:{H - 130}[v2]"
         last = "v2"
         idx = 3

@@ -8,3 +8,6 @@ Original style: আদ্যোপান্ত-like 60-70s true-story reels. Ben
 - build_example.py — how captions/scene times are built from transcript words.
 - reel1_spec.json / reel2_spec.json — specs of the first two reels; file names are ElevenLabs generation ids (flow miQ7c7IT9jn2BaSJxF4B).
 - topics.md — topics already used (never repeat).
+
+- Scenes can be real video clips too (.mp4/.mov): looped if short, centre-cropped into the middle band, no clip audio.
+- reels/assets/<country>/ — the user's own travel footage (720p, silent, 5-6s clips cut from his GoPro LRV files). Prefer these over AI stills when a reel is about that country. Do not use clips where private people are the focus.
