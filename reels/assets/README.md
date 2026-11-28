@@ -28,3 +28,9 @@ All clips: 1280x720, 30fps, silent, ~6 s. render.py accepts them as scenes. Neve
 - penang_beach_waves.mp4 / penang_beach_waves_closeup.mp4 — waves washing over sand (good calm transitions)
 - penang_jetty_sea_hills.mp4 — grey moody sea with green hills (good for serious/mysterious mood)
 (No Kuala Lumpur city clips yet.)
+
+## china/ (filmed 2025-11-13, DJI 4K → 720p)
+- china_river_skyline_golden.mp4 — golden-hour skyline across a wide river, a silhouetted man at a railing (seen from behind), barges passing
+- china_river_skyline_sunset.mp4 — sunset skyline and calm river with barges, no people
+- china_river_skyline_dusk.mp4 — clear-sky skyline across the river, waterfront promenade
+(Looks like the Huangpu River in Shanghai — confirm with the user before naming the city.)
