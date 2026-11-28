@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Render a 1080x1920 informative reel.
+"""Render a 1080x1920 informative reel (Mayajaal-style layout).
+Layout: black frame; top band = white rounded hook box (title + optional emoji, whole video);
+middle band = slow-panning image; lower band = word-synced Bengali subtitles; small "Fi-rose" brand.
 Usage: render.py spec.json
 spec: {
   "images": [paths...], "voice": path, "music": path, "out": path,
   "title": str, "captions": [{"s":float,"e":float,"t":str}], "tail": 1.5,
-  "font": path, "music_vol": 0.16
+  "font": path, "music_vol": 0.16, "emoji": "😱" (optional, drawn after title),
+  "emoji_font": path (default NotoColorEmoji)
 }
 """
 import json, os, subprocess, sys
@@ -62,6 +65,36 @@ def text_png(path, text, font_path, size, fill, stroke, box=None, maxw=940, spac
     return img.size[1]
 
 
+def hook_png(path, text, font_path, emoji=None, emoji_font=None, size=62, maxw=860):
+    font = ImageFont.truetype(font_path, size, layout_engine=ImageFont.Layout.RAQM)
+    tmp = Image.new("RGBA", (W, 10)); d = ImageDraw.Draw(tmp)
+    em = None
+    if emoji:
+        ef = ImageFont.truetype(emoji_font or "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf", 109)
+        ei = Image.new("RGBA", (160, 160), (0, 0, 0, 0))
+        ImageDraw.Draw(ei).text((10, 10), emoji, font=ef, embedded_color=True)
+        ei = ei.crop(ei.getbbox()); es = int(size * 1.1)
+        em = ei.resize((int(ei.width * es / ei.height), es), Image.LANCZOS)
+    ew = (em.width + 14) if em else 0
+    lines = wrap(d, text, font, maxw - ew)
+    lh = int(size * 1.4)
+    widths = [d.textlength(l, font=font) for l in lines]
+    widths[-1] += ew
+    bw = int(max(widths)) + 2 * 44
+    bh = lh * len(lines) + 2 * 30
+    img = Image.new("RGBA", (W, bh + 20), (0, 0, 0, 0)); d = ImageDraw.Draw(img)
+    x0 = (W - bw) // 2
+    d.rounded_rectangle([x0, 0, x0 + bw, bh], radius=34, fill=(255, 255, 255, 255))
+    for i, l in enumerate(lines):
+        tw = widths[i]
+        x = (W - tw) / 2; y = 30 + i * lh - int(size * 0.08)
+        d.text((x, y), l, font=font, fill=(10, 10, 10, 255))
+        if em and i == len(lines) - 1:
+            img.alpha_composite(em, (int(x + d.textlength(l, font=font) + 14), int(30 + i * lh + (lh - em.height) / 2)))
+    img.save(path)
+    return bh
+
+
 def main():
     spec = json.load(open(sys.argv[1]))
     tmp = spec.get("tmp", "/tmp/reel")
@@ -72,13 +105,14 @@ def main():
     lead = 0.4  # voice starts after this
 
     # overlays: title bar (whole video) + captions
-    title_h = text_png(f"{tmp}/title.png", spec["title"], font, 50, (20, 20, 20, 255), 0,
-                       box=(255, 204, 0, 235), maxw=900)
+    title_h = hook_png(f"{tmp}/title.png", spec["title"], font, spec.get("emoji"), spec.get("emoji_font"))
+    TOP, MID_H = 560, 780  # middle image band: y=TOP..TOP+MID_H
+    title_y = max(40, (TOP - title_h) // 2 + 20)
     brand_h = text_png(f"{tmp}/brand.png", spec.get("brand", "Fi-rose"), spec.get("brand_font", font), 38, (255, 255, 255, 230), 3)
     caps = []
     for i, c in enumerate(spec["captions"]):
         p = f"{tmp}/cap{i:03d}.png"
-        h = text_png(p, c["t"].replace("...", ""), font, 68, (255, 255, 255, 255), 6, maxw=920)
+        h = text_png(p, c["t"].replace("...", ""), font, 70, (255, 255, 255, 255), 5, maxw=960)
         caps.append((c["s"] + lead, c["e"] + lead, p, h))
 
     scenes = spec["scenes"]
@@ -91,18 +125,19 @@ def main():
         d = t1 - t0
         direction = 1 if k % 2 == 0 else -1
         x = f"(iw-{W})*(0.5{'-' if direction > 0 else '+'}0.18+{0.36 * direction}*t/{d:.3f})"
-        vf = (f"[0:v]scale=-2:1980:flags=lanczos,crop={W}:{H}:x='{x}':y='(ih-{H})/2',"
-              f"eq=contrast=1.06:saturation=0.9,vignette=PI/5,format=yuva420p[bg]")
+        vf = (f"[0:v]scale=-2:{int(MID_H * 1.12)}:flags=lanczos,crop={W}:{MID_H}:x='{x}':y='(ih-{MID_H})/2',"
+              f"eq=contrast=1.06:saturation=0.92,vignette=PI/6,format=yuva420p[img];"
+              f"color=c=black:s={W}x{H}:r={FPS}:d={d:.3f}[base];[base][img]overlay=0:{TOP}:shortest=1[bg]")
         inputs = ["-framerate", str(FPS), "-loop", "1", "-t", f"{d:.3f}", "-i", ip,
                   "-i", f"{tmp}/title.png", "-i", f"{tmp}/brand.png"]
-        chain = vf + f";[bg][1:v]overlay=(W-w)/2:150[v1];[v1][2:v]overlay=(W-w)/2:{H - 260}[v2]"
+        chain = vf + f";[bg][1:v]overlay=(W-w)/2:{title_y}[v1];[v1][2:v]overlay=(W-w)/2:{H - 130}[v2]"
         last = "v2"
         idx = 3
         for (s, e, p, h) in caps:
             if e <= t0 or s >= t1:
                 continue
             inputs += ["-i", p]
-            chain += (f";[{last}][{idx}:v]overlay=(W-w)/2:{1220}:enable='between(t,{s - t0:.3f},{e - t0:.3f})'[o{idx}]")
+            chain += (f";[{last}][{idx}:v]overlay=(W-w)/2:{TOP + MID_H + 70}:enable='between(t,{s - t0:.3f},{e - t0:.3f})'[o{idx}]")
             last = f"o{idx}"; idx += 1
         fade = ""
         if k == 0:
